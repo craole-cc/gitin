@@ -1,0 +1,197 @@
+#!/bin/sh
+
+# Function to get the update message
+get_update_message() {
+  kwote -d "${@:-Updating}"
+}
+
+# Function to update Git from config alias
+gitup_from_config() {
+  git config --get-regexp ^alias.up >/dev/null 2>&1 &&
+    git up "$@"
+}
+
+# Function to update Git from bin
+gitup_from_bin() {
+  cd "$(git rev-parse --show-toplevel)" || exit
+  gitPull                                #| Update from repo
+  gitReset                               #| Honor changes to gitignore
+  gitStatus --default                    #| Check status
+  gitAddAll --default                    #| Add untracked files
+  gitCommit "$(get_update_message "$@")" #| Commit changes with the update message
+  gitPush                                #| Push changes to Git repo
+}
+
+# Function to reset Git
+gitReset() {
+  git rm -r --force --cached .
+}
+
+# Function to display Git status
+gitStatus() {
+  case "$1" in
+  -u | --untracked) git status --short --untracked-files=all ;;
+  -s | --short | --default | *) git status --short ;;
+  esac
+}
+
+# Function to push changes to Git repo
+gitPush() {
+  git push --progress
+}
+
+# Function to pull changes from Git repo
+gitPull() {
+  git pull
+}
+
+# Function to add all changes
+gitAddAll() {
+  case "$1" in
+  -n | --dry-run | --test) opt="--dry-run" ;;
+  -d | --verbose) opt="--verbose" ;;
+  -f | --force) opt="--force" ;;
+  --default | *) opt="" ;;
+  esac
+
+  eval "git add --all . $opt"
+}
+
+# Function to commit changes
+gitCommit() {
+  git commit --all --quiet --message="$*"
+}
+
+# Function to configure Git
+gitConfig() {
+  __opts__() {
+    case "$1" in
+    -l | --ls | --list) __list__ ;;
+    -i | --ignore) __ignore__ "$@" ;;
+    -e | --env) env=$2 ;;
+    *) __config__ ;;
+    esac
+  }
+
+  __declare__() {
+    # shellcheck disable=SC1090
+    if [ -f "$env" ]; then
+      . "$env"
+      [ "$Name" ] && gitNAME="$Name"
+      [ "$Email" ] && gitEMAIL="$Email"
+    fi
+  }
+
+  __validate__() {
+    [ "${gitNAME}" ] || {
+      printf "'%s' variable not set\n" "gitNAME"
+      return 1
+    }
+    [ "${gitEMAIL}" ] || {
+      printf "'%s' variable not set\n" "gitEMAIL"
+      return 1
+    }
+    [ "${EDITOR}" ] || {
+      printf "'%s' variable not set\n" "EDITOR"
+      return 1
+    }
+  }
+
+  __list__() { git config --list --show-origin; }
+
+  __config__() {
+    # init
+    __validate__
+
+    # --> Allow Update
+    unset GIT_CONFIG
+
+    gitIGNORE="${GDOTDIR}/gitignore"
+    git config --global user.name "${gitNAME}"
+    git config --global user.email "${gitEMAIL}"
+    git config --local user.name "${gitNAME}"
+    git config --local user.email "${gitEMAIL}"
+    git config --local core.editor "${EDITOR}" --wait
+    git config --local init.defaultBranch main
+    git config --local status.showUntrackedFiles no
+    git config --local --unset core.autocrlf
+    git config --local core.autocrlf false
+    git config --local core.safecrlf true
+    git config --local push.autoSetupRemote
+    git config --local alias.empty "git commit --allow-empty"
+    # git config --local fetch.prune true
+  }
+
+  __ignore__() {
+    if [ -f "$2" ]; then
+      git config --local core.excludesfile "${2}"
+    else
+      git config --local core.excludesfile "${gitIGNORE}"
+    fi
+  }
+
+  __opts__ "$@"
+  __declare__
+  __config__
+}
+
+# Function to quote a string with different types of quotation marks
+kwote() {
+  usage() {
+    printf "Usage: %s [-s | --single] [-d | --double] <string>\n" "$0"
+  }
+
+  #@ Set default quotation mark
+  qm="'"
+
+  # Parse the command-line options
+  while [ $# -gt 0 ]; do
+    case "$1" in
+    -s | --single) qm="'" ;;
+    -d | --double) qm="\"" ;;
+    -b | --backtick) qm="\`" ;;
+    -c | --code) qm="\`\`\`" ;;
+    -t | --tilde) qm="~" ;;
+    -a | --at) qm="@" ;;
+    -H | --hash) qm="#" ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    --) # End of options
+      shift
+      break
+      ;;
+    -*)
+      printf "%s: invalid option -- '%s'\n" "$0" "${1#-}" >&2
+      usage >&2
+      exit 1
+      ;;
+    *)
+      break
+      ;;
+    esac
+    shift
+  done
+
+  # Check that a string argument was provided
+  if [ $# -ne 1 ]; then
+    usage >&2
+    exit 1
+  fi
+
+  # Escape any quotation marks in the string
+  string="$1"
+  escaped_string="$(
+    printf '%s' "$string" | sed "s/$qm/$qm\\\\$qm/g"
+  )"
+
+  # Enclose the string in quotation marks
+  printf '%s%s%s' "$qm" "$escaped_string" "$qm"
+}
+
+# Uncomment the line below to use the update from config function
+# gitup_from_config "$@"
+
+# Use the update from bin function
+gitup_from_bin "$@"

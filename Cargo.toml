@@ -1,0 +1,16 @@
+[package]
+name = "gitsy"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.76"
+arboard = "3.3.0"
+clap = "4.4.11"
+dirs = "5.0.1"
+whoami = "1.4.1"
+
+[lints.rust]
+unused = "allow"
